@@ -8,7 +8,7 @@ from assembler import MIC1Assembler
 class MIC1SimulatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Simulador MIC-1 Pro (Tanenbaum) - By Gemini")
+        self.root.title("Simulador MIC-1 Gabriel G. Iuri F. Maria Eduarda V. Marilia S. Pedro L. Yasmin M.")
         self.root.geometry("1400x800")
         self.root.configure(bg="#2b2b2b")
         
@@ -30,7 +30,6 @@ class MIC1SimulatorApp:
         self.init_memory_view()
         self.update_ui()
 
-    # --- SOLUÇÃO PROBLEMA 2: HELPER PARA VISUALIZAÇÃO COM SINAL ---
     def to_signed(self, val):
         """Converte um valor de 16 bits unsigned para signed decimal"""
         if val > 32767:
@@ -95,17 +94,40 @@ class MIC1SimulatorApp:
             c += 1
             if c > 4: r, c = 1, 0
 
-        cache_frame = ttk.LabelFrame(right_panel, text="Cache (Mapeamento Direto - 4 Palavras/Bloco)")
-        cache_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        # --- SISTEMA DE CACHES (ABAS) ---
+        cache_container = ttk.LabelFrame(right_panel, text="Sistema de Caches (Harvard)")
+        cache_container.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        self.cache_tabs = ttk.Notebook(cache_container)
+        self.cache_tabs.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Aba Dados
+        self.d_cache_frame = ttk.Frame(self.cache_tabs)
+        self.cache_tabs.add(self.d_cache_frame, text="Cache de DADOS")
+        
+        # Aba Instruções
+        self.i_cache_frame = ttk.Frame(self.cache_tabs)
+        self.cache_tabs.add(self.i_cache_frame, text="Cache de INSTRUÇÕES")
         
         cols_cache = ("Linha", "Valid", "Tag", "Dirty", "Dados (Bloco)")
-        self.cache_tree = ttk.Treeview(cache_frame, columns=cols_cache, show="headings", height=5)
+        
+        # Treeview Dados
+        self.d_cache_tree = ttk.Treeview(self.d_cache_frame, columns=cols_cache, show="headings", height=5)
         for col in cols_cache:
-            self.cache_tree.heading(col, text=col)
-            self.cache_tree.column(col, width=60, anchor="center")
-        self.cache_tree.column("Dados (Bloco)", width=200)
-        self.cache_tree.pack(fill=tk.BOTH, expand=True)
+            self.d_cache_tree.heading(col, text=col)
+            self.d_cache_tree.column(col, width=50, anchor="center")
+        self.d_cache_tree.column("Dados (Bloco)", width=180)
+        self.d_cache_tree.pack(fill=tk.BOTH, expand=True)
 
+        # Treeview Instruções
+        self.i_cache_tree = ttk.Treeview(self.i_cache_frame, columns=cols_cache, show="headings", height=5)
+        for col in cols_cache:
+            self.i_cache_tree.heading(col, text=col)
+            self.i_cache_tree.column(col, width=50, anchor="center")
+        self.i_cache_tree.column("Dados (Bloco)", width=180)
+        self.i_cache_tree.pack(fill=tk.BOTH, expand=True)
+
+        # Memória Principal
         mem_frame = ttk.LabelFrame(right_panel, text="Memória Principal (4096 Palavras)")
         mem_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
@@ -128,11 +150,7 @@ class MIC1SimulatorApp:
 
     def init_memory_view(self):
         """Inicializa a tabela de memória com todas as linhas"""
-        # Limpa tudo antes
         self.mem_tree.delete(*self.mem_tree.get_children())
-        
-        # Cria as 4096 linhas vazias (ou com zeros) de uma vez
-        # Usamos iid=str(addr) para poder atualizar linhas específicas depois sem recriar tudo
         for addr in range(4096):
             val = 0
             bin_s = f"{val:016b}"
@@ -149,10 +167,6 @@ class MIC1SimulatorApp:
             
         self.cpu.reset()
         self.cpu.load_program(binary)
-        
-        # Como o load_program reinicia a memória, precisamos atualizar a view inteira
-        # Mas para ser mais eficiente, atualizamos apenas onde tem dados
-        # Ou simplesmente reinicializamos tudo
         self.update_full_memory_view()
         self.update_ui()
         self.log("Programa compilado e carregado com sucesso.")
@@ -173,62 +187,36 @@ class MIC1SimulatorApp:
             signed_val = self.to_signed(val)
             lbl.config(text=f"{val:04X} ({signed_val})")
 
-        # Atualiza Memória - Otimização: Atualiza apenas o que mudou?
-        # Para simplificar e garantir consistência visual (write-back, etc),
-        # podemos atualizar apenas as áreas "quentes" ou tudo se não for lento.
-        # No Tkinter, atualizar 4096 itens toda hora pode travar.
-        # Vamos atualizar apenas onde MAR apontou (último acesso) e PC/SP
-        # E se houver flush da cache, precisaria atualizar mais coisas.
-        
-        # Estratégia Híbrida: Atualiza endereços críticos a cada ciclo
-        # E um "refresh total" ocasionalmente ou quando solicitado.
-        # Mas como você quer ver "tudo", vamos tentar atualizar tudo de forma inteligente.
-        
-        # Atualiza apenas linhas que diferem do que está na treeview?
-        # Isso seria pesado para checar.
-        
-        # Vamos atualizar apenas os endereços que sabemos que podem ter mudado:
-        # 1. Onde PC aponta
-        # 2. Onde SP aponta
-        # 3. Onde MAR aponta (último acesso de dados)
-        # 4. Se houve um FLUSH da cache, teríamos que atualizar tudo.
-        
-        # Para garantir que você veja tudo correto sem lag excessivo:
-        # Vamos atualizar tudo. Se ficar lento, me avise.
-        # Se ficar muito lento, podemos voltar para atualização parcial.
-        
-        # ATUALIZAÇÃO COMPLETA (Pode ser um pouco pesada em 60Hz, mas OK para simulador didático)
-        # self.update_full_memory_view() 
-        
-        # ALTERNATIVA LEVE: Atualizar apenas o que a CPU tocou recentemente?
-        # Como não temos uma lista de "dirty addresses" na CPU, vamos atualizar
-        # pelo menos a janela visível ou endereços chave.
-        
-        # Vamos tentar atualizar tudo, mas usando .item() que é mais rápido que delete/insert
-        # Como já criamos as linhas com IDs fixos, é rápido.
-        
-        # Para otimizar: Só atualiza se o valor mudou na memória do Python vs Treeview?
-        # Não temos acesso fácil ao valor antigo da Treeview sem query.
-        
-        # Vamos atualizar tudo. Computadores modernos aguentam 4000 updates de texto.
         self.update_full_memory_view()
 
-        # Seleciona/Foca na linha do PC para o usuário acompanhar
+        # Seleciona/Foca na linha do PC
         pc = self.cpu.registers['PC']
         if pc < 4096:
             self.mem_tree.selection_set(str(pc))
             self.mem_tree.see(str(pc))
 
-        # Atualiza Cache
-        self.cache_tree.delete(*self.cache_tree.get_children())
-        for i, line in enumerate(self.cpu.cache.lines):
+        # --- ATUALIZAÇÃO DAS DUAS CACHES ---
+        
+        # 1. Atualiza Cache de DADOS
+        self.d_cache_tree.delete(*self.d_cache_tree.get_children())
+        for i, line in enumerate(self.cpu.data_cache.lines):
             data_str = str([f"{x:04X}" for x in line.data])
-            self.cache_tree.insert("", "end", values=(i, line.valid, line.tag, line.dirty, data_str))
+            self.d_cache_tree.insert("", "end", values=(i, line.valid, line.tag, line.dirty, data_str))
+
+        # 2. Atualiza Cache de INSTRUÇÕES
+        self.i_cache_tree.delete(*self.i_cache_tree.get_children())
+        for i, line in enumerate(self.cpu.inst_cache.lines):
+            data_str = str([f"{x:04X}" for x in line.data])
+            self.i_cache_tree.insert("", "end", values=(i, line.valid, line.tag, line.dirty, data_str))
 
         # Logs
-        for log in self.cpu.cache.log:
-            self.log(f"[CACHE] {log}")
-        self.cpu.cache.log.clear()
+        for log in self.cpu.data_cache.log:
+            self.log(f"[D-CACHE] {log}")
+        self.cpu.data_cache.log.clear()
+        
+        for log in self.cpu.inst_cache.log:
+            self.log(f"[I-CACHE] {log}")
+        self.cpu.inst_cache.log.clear()
         
         for micro in self.cpu.micro_log:
             self.log(f"[MICRO] {micro}")
@@ -262,7 +250,6 @@ class MIC1SimulatorApp:
         self.pause_simulation()
         self.cpu.reset()
         self.log_display.delete("1.0", tk.END)
-        # Reinicia a tabela visual também
         self.update_full_memory_view()
         self.update_ui()
 

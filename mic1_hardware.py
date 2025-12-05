@@ -106,7 +106,10 @@ class MIC1Hardware:
     def __init__(self):
         self.MEMORY_SIZE = 4096
         self.memory = [0] * self.MEMORY_SIZE
-        self.cache = Cache(self.memory, num_lines=8, block_size=4) 
+        
+        # --- ARQUITETURA HARVARD (Caches Separadas) ---
+        self.inst_cache = Cache(self.memory, num_lines=8, block_size=4) # Instruções
+        self.data_cache = Cache(self.memory, num_lines=8, block_size=4) # Dados
 
         self.registers = {
             'PC': 0, 'AC': 0, 'SP': 4095, 
@@ -118,7 +121,9 @@ class MIC1Hardware:
 
     def reset(self):
         self.memory = [0] * self.MEMORY_SIZE
-        self.cache = Cache(self.memory, num_lines=8, block_size=4)
+        # Reseta ambas as caches
+        self.inst_cache = Cache(self.memory, num_lines=8, block_size=4)
+        self.data_cache = Cache(self.memory, num_lines=8, block_size=4)
         self.registers = {k: 0 for k in self.registers}
         self.registers['SP'] = 4095
         self.halted = False
@@ -130,19 +135,33 @@ class MIC1Hardware:
             if i < self.MEMORY_SIZE:
                 self.memory[i] = value
                 
-    def _read_mem(self, addr):
+    def _fetch_instruction(self, addr):
+        """Busca instrução usando a Cache de Instruções"""
         if 0 <= addr < self.MEMORY_SIZE:
             self.registers['MAR'] = addr
-            val = self.cache.read(addr)
+            # Usa inst_cache
+            val = self.inst_cache.read(addr)
             self.registers['MBR'] = val
             return val
         return 0
 
-    def _write_mem(self, addr, val):
+    def _read_data(self, addr):
+        """Lê dados usando a Cache de Dados"""
+        if 0 <= addr < self.MEMORY_SIZE:
+            self.registers['MAR'] = addr
+            # Usa data_cache
+            val = self.data_cache.read(addr)
+            self.registers['MBR'] = val
+            return val
+        return 0
+
+    def _write_data(self, addr, val):
+        """Escreve dados usando a Cache de Dados"""
         if 0 <= addr < self.MEMORY_SIZE:
             self.registers['MAR'] = addr
             self.registers['MBR'] = val
-            self.cache.write(addr, val)
+            # Usa data_cache
+            self.data_cache.write(addr, val)
 
     def step(self):
         if self.halted: return
@@ -154,9 +173,9 @@ class MIC1Hardware:
 
         self.micro_log.clear()
         
-        # --- FETCH ---
-        self.micro_log.append(f"[FETCH] MAR <- PC ({pc}); RD;")
-        instruction = self._read_mem(pc)
+        # --- FETCH (I-Cache) ---
+        self.micro_log.append(f"[FETCH] MAR <- PC ({pc}); RD (I-Cache);")
+        instruction = self._fetch_instruction(pc)
         self.micro_log.append(f"[FETCH] PC <- PC + 1; IR <- MBR ({instruction});")
         self.registers['IR'] = instruction
         self.registers['PC'] += 1
@@ -164,37 +183,33 @@ class MIC1Hardware:
         opcode_4 = (instruction >> 12) & 0xF
         operand_12 = instruction & 0xFFF
         
-        # --- DECODE & EXECUTE ---
+        # --- DECODE & EXECUTE (D-Cache) ---
         if opcode_4 == 0x0: # LODD
-            self.micro_log.append(f"[LODD] MAR <- {operand_12}; RD;")
-            val = self._read_mem(operand_12)
+            self.micro_log.append(f"[LODD] MAR <- {operand_12}; RD (D-Cache);")
+            val = self._read_data(operand_12)
             self.registers['AC'] = val
             self.micro_log.append(f"[LODD] AC <- MBR ({val});")
             
         elif opcode_4 == 0x1: # STOD
             val = self.registers['AC']
-            self._write_mem(operand_12, val)
-            self.micro_log.append(f"[STOD] MAR <- {operand_12}; MBR <- AC ({val}); WR (Cache);")
+            self._write_data(operand_12, val)
+            self.micro_log.append(f"[STOD] MAR <- {operand_12}; MBR <- AC ({val}); WR (D-Cache);")
             
         elif opcode_4 == 0x2: # ADDD
-            val = self._read_mem(operand_12)
-            # Aritmética mantendo 16 bits unsigned para armazenamento
+            val = self._read_data(operand_12)
             res = (self.registers['AC'] + val) & 0xFFFF
             self.registers['AC'] = res
             self.micro_log.append(f"[ADDD] AC <- AC + MBR ({res});")
             
         elif opcode_4 == 0x3: # SUBD
-            val = self._read_mem(operand_12)
-            # Subtração com wrapping de 16 bits
+            val = self._read_data(operand_12)
             res = (self.registers['AC'] - val) & 0xFFFF
             self.registers['AC'] = res
             self.micro_log.append(f"[SUBD] AC <- AC - MBR ({res});")
             
         elif opcode_4 == 0x4: # JPOS
-            # Conversão para Signed para a lógica de comparação
             ac_signed = self.registers['AC']
             if ac_signed > 32767: ac_signed -= 65536
-            
             if ac_signed >= 0:
                 self.registers['PC'] = operand_12
                 self.micro_log.append(f"[JPOS] AC >= 0. PC <- {operand_12}")
@@ -218,32 +233,31 @@ class MIC1Hardware:
             
         elif opcode_4 == 0x8: # LODL
             addr = (self.registers['SP'] + operand_12) & 0xFFFF
-            val = self._read_mem(addr)
+            val = self._read_data(addr)
             self.registers['AC'] = val
             self.micro_log.append(f"[LODL] MAR <- SP + {operand_12}; RD; AC <- MBR")
             
         elif opcode_4 == 0x9: # STOL
             addr = (self.registers['SP'] + operand_12) & 0xFFFF
             val = self.registers['AC']
-            self._write_mem(addr, val)
+            self._write_data(addr, val)
             self.micro_log.append(f"[STOL] MAR <- SP + {operand_12}; MBR <- AC; WR")
             
         elif opcode_4 == 0xA: # ADDL
             addr = (self.registers['SP'] + operand_12) & 0xFFFF
-            val = self._read_mem(addr)
+            val = self._read_data(addr)
             self.registers['AC'] = (self.registers['AC'] + val) & 0xFFFF
             self.micro_log.append(f"[ADDL] AC <- AC + Mem[SP+{operand_12}]")
             
         elif opcode_4 == 0xB: # SUBL
             addr = (self.registers['SP'] + operand_12) & 0xFFFF
-            val = self._read_mem(addr)
+            val = self._read_data(addr)
             self.registers['AC'] = (self.registers['AC'] - val) & 0xFFFF
             self.micro_log.append(f"[SUBL] AC <- AC - Mem[SP+{operand_12}]")
             
         elif opcode_4 == 0xC: # JNEG
             ac_signed = self.registers['AC']
             if ac_signed > 32767: ac_signed -= 65536
-            
             if ac_signed < 0:
                 self.registers['PC'] = operand_12
                 self.micro_log.append(f"[JNEG] AC < 0. PC <- {operand_12}")
@@ -260,41 +274,41 @@ class MIC1Hardware:
         elif opcode_4 == 0xE: # CALL
             sp = (self.registers['SP'] - 1) & 0xFFFF
             self.registers['SP'] = sp
-            self._write_mem(sp, self.registers['PC'])
+            self._write_data(sp, self.registers['PC'])
             self.registers['PC'] = operand_12
             self.micro_log.append(f"[CALL] SP<-SP-1; Mem[SP]<-PC; PC<-{operand_12}")
             
         elif opcode_4 == 0xF: # Instruções Especiais
-            if (instruction >> 8) == 0xFC: # INSP
+            high_byte = instruction >> 8
+            
+            if high_byte == 0xFC: # INSP
                 y = instruction & 0xFF
                 self.registers['SP'] = (self.registers['SP'] + y) & 0xFFFF
                 self.micro_log.append(f"[INSP] SP <- SP + {y}")
-            elif (instruction >> 8) == 0xFE: # DESP
+            elif high_byte == 0xFE: # DESP
                 y = instruction & 0xFF
                 self.registers['SP'] = (self.registers['SP'] - y) & 0xFFFF
                 self.micro_log.append(f"[DESP] SP <- SP - {y}")
             
-            # --- IMPLEMENTAÇÃO DE PSHI e POPI ---
-            elif instruction == 0xF000: # PSHI (Push Indirect)
+            elif instruction == 0xF000: # PSHI
                 addr = self.registers['AC']
-                val = self._read_mem(addr)
+                val = self._read_data(addr)
                 sp = (self.registers['SP'] - 1) & 0xFFFF
                 self.registers['SP'] = sp
-                self._write_mem(sp, val)
+                self._write_data(sp, val)
                 self.micro_log.append(f"[PSHI] Push Indirect: Stack <- Mem[AC:{addr}] ({val})")
 
-            elif instruction == 0xF200: # POPI (Pop Indirect)
+            elif instruction == 0xF200: # POPI
                 sp = self.registers['SP']
-                val = self._read_mem(sp)
+                val = self._read_data(sp)
                 addr = self.registers['AC']
-                self._write_mem(addr, val)
+                self._write_data(addr, val)
                 self.registers['SP'] = (sp + 1) & 0xFFFF
                 self.micro_log.append(f"[POPI] Pop Indirect: Mem[AC:{addr}] <- Stack ({val})")
-            # ------------------------------------
 
             elif instruction == 0xF800: # RETN
                 sp = self.registers['SP']
-                ret_addr = self._read_mem(sp)
+                ret_addr = self._read_data(sp)
                 self.registers['PC'] = ret_addr
                 self.registers['SP'] = (sp + 1) & 0xFFFF
                 self.micro_log.append("[RETN] PC <- Mem[SP]; SP <- SP + 1")
@@ -306,20 +320,20 @@ class MIC1Hardware:
             elif instruction == 0xF400: # PUSH
                 sp = (self.registers['SP'] - 1) & 0xFFFF
                 self.registers['SP'] = sp
-                self._write_mem(sp, self.registers['AC'])
+                self._write_data(sp, self.registers['AC'])
                 self.micro_log.append("[PUSH] SP<-SP-1; Mem[SP] <- AC")
             elif instruction == 0xF600: # POP
                 sp = self.registers['SP']
-                val = self._read_mem(sp)
+                val = self._read_data(sp)
                 self.registers['AC'] = val
                 self.registers['SP'] = (sp + 1) & 0xFFFF
                 self.micro_log.append("[POP] AC <- Mem[SP]; SP<-SP+1")
             
-            # FLUSH NO HALT
             elif instruction == 0xFFFF: # HALT
                 self.halted = True
-                self.cache.flush_all() # Força a escrita da cache na RAM
-                self.micro_log.append("[HALT] Execução finalizada. Cache FLUSHED para RAM.")
+                self.data_cache.flush_all() # Flush dados
+                self.inst_cache.flush_all() # Flush instruções
+                self.micro_log.append("[HALT] Execução finalizada. Caches FLUSHED.")
             
             else:
                 self.micro_log.append(f"Instrução Desconhecida: {hex(instruction)}")
