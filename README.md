@@ -1,6 +1,6 @@
 # Simulador MIC-1
 
-Simulador da arquitetura MIC-1 com sistema de cache hierárquico e arquitetura Harvard. Desenvolvido como projeto acadêmico para visualização e estudo de arquitetura de computadores.
+Simulador da arquitetura MIC-1 com sistema de cache hierárquico. Desenvolvido como projeto acadêmico para visualização e estudo de arquitetura de computadores.
 
 **Desenvolvedores:** Gabriel G., Iuri F., Maria Eduarda V., Marilia S., Pedro L., Yasmin M.
 
@@ -197,7 +197,7 @@ HALT
 
 ### Hierarquia de Memória
 
-O simulador implementa arquitetura Harvard com caches separadas:
+O simulador implementa caches separadas:
 
 - **Cache de Instruções**: 8 linhas, blocos de 4 palavras
 - **Cache de Dados**: 8 linhas, blocos de 4 palavras
@@ -221,21 +221,24 @@ O simulador implementa arquitetura Harvard com caches separadas:
 - **TIR**: Temporary Instruction Register
 - **A, B, C**: Registradores auxiliares
 
-### Formato das Instruções
+### Formato das Instruções (Padrão Binário)
 
-Instruções tipo 1 (opcodes 0x0-0xE):
+Instruções tipo 1 (Opcodes 0000 a 1110):
 ```
-[4 bits opcode][12 bits operando]
-```
-
-Instruções tipo 2 (opcode 0xF com subopcode):
-```
-[0xF][4 bits subop][8 bits operando]
+[4 bits opcode] [12 bits operando]
+Exemplo STOD: 0001 000000001010
 ```
 
-Instruções fixas (sem operando):
+Instruções tipo 2 (Opcode 1111 com subopcode):
+```
+[1111] [4 bits subop] [8 bits operando]
+Exemplo INSP: 1111 1100 00000101
+```
+
+Instruções fixas (Opcode 1111 + extensão fixa):
 ```
 [16 bits opcode fixo]
+Exemplo HALT: 1111 1111 1111 1111
 ```
 
 ---
