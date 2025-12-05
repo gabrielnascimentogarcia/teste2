@@ -11,54 +11,87 @@ class MIC1Assembler:
         }
 
     def compile(self, text):
-        lines = text.split('\n')
+        raw_lines = text.split('\n')
+        
+        # --- PASSADA 1: Identificar Labels e Limpar Código ---
+        labels = {}
+        instructions = []
+        address_counter = 0
+        
+        for line in raw_lines:
+            # Remove comentários e espaços
+            clean = line.split(';')[0].split('#')[0].strip()
+            if not clean:
+                continue
+            
+            # Verifica se há definição de label (ex: "inicio:" ou "loop: LODD 5")
+            if ':' in clean:
+                label_part, rest = clean.split(':', 1)
+                label_name = label_part.strip()
+                labels[label_name] = address_counter
+                
+                rest = rest.strip()
+                if rest: # Se houver instrução na mesma linha do label
+                    instructions.append(rest)
+                    address_counter += 1
+            else:
+                instructions.append(clean)
+                address_counter += 1
+
+        # --- PASSADA 2: Gerar Código Binário ---
         binary_code = []
         errors = []
         
-        # 1. Primeira passada (opcional, para labels futuros)
-        # Aqui simplificamos para tradução direta linha a linha conforme MIC-1 padrão
-        
-        for i, line in enumerate(lines):
-            line_num = i + 1
-            # Remove comentários e espaços extras
-            clean_line = line.split(';')[0].split('#')[0].strip()
-            
-            if not clean_line:
-                continue
-
-            parts = clean_line.split()
+        for i, line in enumerate(instructions):
+            parts = line.split()
             mnemonic = parts[0].upper()
+            
+            # Caso 1: É uma Instrução
+            if mnemonic in self.opcodes:
+                base_opcode = self.opcodes[mnemonic]
+                
+                # Verifica se precisa de operando (0x0...0xE e INSP/DESP)
+                needs_operand = (base_opcode >> 12) <= 0xE or mnemonic in ['INSP', 'DESP']
+                
+                if needs_operand:
+                    if len(parts) < 2:
+                        errors.append(f"Erro: '{mnemonic}' requer operando")
+                        continue
+                    
+                    op_str = parts[1]
+                    val = 0
+                    
+                    # Tenta resolver o operando (pode ser Label ou Número)
+                    if op_str in labels:
+                        val = labels[op_str]
+                    else:
+                        try:
+                            val = int(op_str)
+                        except ValueError:
+                            errors.append(f"Erro: Operando '{op_str}' inválido ou label não encontrado")
+                            continue
+                    
+                    # Monta a instrução final
+                    if mnemonic in ['INSP', 'DESP']:
+                        final_instr = base_opcode | (val & 0xFF)
+                    else:
+                        final_instr = base_opcode | (val & 0xFFF)
+                    
+                    binary_code.append(final_instr)
+                else:
+                    # Instrução sem operando (ex: HALT, PUSH, RETN)
+                    binary_code.append(base_opcode)
 
-            # Caso seja apenas um número (dado puro)
-            if mnemonic not in self.opcodes:
+            # Caso 2: É apenas dado (número)
+            else:
                 try:
                     val = int(mnemonic)
                     binary_code.append(val & 0xFFFF)
-                    continue
                 except ValueError:
-                    # Pode ser um label ou erro, vamos assumir erro por enquanto nesta versão simples
-                    errors.append(f"Linha {line_num}: Instrução inválida '{mnemonic}'")
-                    continue
-
-            base_opcode = self.opcodes[mnemonic]
-            
-            # Instruções que precisam de operando (0x0 a 0xE e INSP/DESP)
-            needs_operand = (base_opcode >> 12) <= 0xE or mnemonic in ['INSP', 'DESP']
-            
-            if needs_operand:
-                if len(parts) < 2:
-                    errors.append(f"Linha {line_num}: '{mnemonic}' requer operando")
-                    continue
-                try:
-                    operand = int(parts[1])
-                    if mnemonic in ['INSP', 'DESP']:
-                        final_instr = base_opcode | (operand & 0xFF)
+                    # Tenta ver se é um label usado como dado (ex: ponteiro)
+                    if mnemonic in labels:
+                        binary_code.append(labels[mnemonic])
                     else:
-                        final_instr = base_opcode | (operand & 0xFFF)
-                    binary_code.append(final_instr)
-                except ValueError:
-                    errors.append(f"Linha {line_num}: Operando inválido '{parts[1]}'")
-            else:
-                binary_code.append(base_opcode)
+                        errors.append(f"Erro: Instrução desconhecida '{mnemonic}'")
 
         return binary_code, errors
