@@ -1,14 +1,21 @@
 class MIC1Assembler:
     def __init__(self):
         # Mapeamento dos mnemônicos para seus opcodes base
+        # Agora utilizando notação binária para facilitar a correlação com a documentação (MAC I)
         self.opcodes = {
-            'LODD': 0x0000, 'STOD': 0x1000, 'ADDD': 0x2000, 'SUBD': 0x3000,
-            'JPOS': 0x4000, 'JZER': 0x5000, 'JUMP': 0x6000, 'LOCO': 0x7000,
-            'LODL': 0x8000, 'STOL': 0x9000, 'ADDL': 0xA000, 'SUBL': 0xB000,
-            'JNEG': 0xC000, 'JNZE': 0xD000, 'CALL': 0xE000,
-            'PSHI': 0xF000, 'POPI': 0xF200, 'PUSH': 0xF400, 'POP': 0xF600,
-            'RETN': 0xF800, 'SWAP': 0xFA00, 'INSP': 0xFC00, 'DESP': 0xFE00,
-            'HALT': 0xFFFF
+            'LODD': 0b0000000000000000, 'STOD': 0b0001000000000000, 
+            'ADDD': 0b0010000000000000, 'SUBD': 0b0011000000000000,
+            'JPOS': 0b0100000000000000, 'JZER': 0b0101000000000000, 
+            'JUMP': 0b0110000000000000, 'LOCO': 0b0111000000000000,
+            'LODL': 0b1000000000000000, 'STOL': 0b1001000000000000, 
+            'ADDL': 0b1010000000000000, 'SUBL': 0b1011000000000000,
+            'JNEG': 0b1100000000000000, 'JNZE': 0b1101000000000000, 
+            'CALL': 0b1110000000000000,
+            'PSHI': 0b1111000000000000, 'POPI': 0b1111001000000000, 
+            'PUSH': 0b1111010000000000, 'POP':  0b1111011000000000,
+            'RETN': 0b1111100000000000, 'SWAP': 0b1111101000000000, 
+            'INSP': 0b1111110000000000, 'DESP': 0b1111111000000000,
+            'HALT': 0b1111111111111111
         }
 
     def compile(self, text):
@@ -53,9 +60,9 @@ class MIC1Assembler:
             if mnemonic in self.opcodes:
                 base_opcode = self.opcodes[mnemonic]
                 
-                # Regra: OpCodes de 0x0 a 0xE precisam de argumento (operandos).
+                # Regra: OpCodes de 0000 a 1110 precisam de argumento (operandos).
                 # INSP e DESP também precisam.
-                needs_operand = (base_opcode >> 12) <= 0xE or mnemonic in ['INSP', 'DESP']
+                needs_operand = (base_opcode >> 12) <= 0b1110 or mnemonic in ['INSP', 'DESP']
                 
                 if needs_operand:
                     if len(parts) < 2:
@@ -77,9 +84,9 @@ class MIC1Assembler:
                     
                     # Bitwise OR para juntar o opcode com o operando
                     if mnemonic in ['INSP', 'DESP']:
-                        final_instr = base_opcode | (val & 0xFF) # Apenas 8 bits
+                        final_instr = base_opcode | (val & 0b11111111) # Apenas 8 bits
                     else:
-                        final_instr = base_opcode | (val & 0xFFF) # 12 bits padrão
+                        final_instr = base_opcode | (val & 0b111111111111) # 12 bits padrão
                     
                     binary_code.append(final_instr)
                 else:
@@ -90,7 +97,7 @@ class MIC1Assembler:
             else:
                 try:
                     val = int(mnemonic)
-                    binary_code.append(val & 0xFFFF)
+                    binary_code.append(val & 0b1111111111111111)
                 except ValueError:
                     # Tenta ver se é um label usado como ponteiro
                     if mnemonic in labels:

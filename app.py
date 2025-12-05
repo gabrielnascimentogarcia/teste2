@@ -166,11 +166,6 @@ class MIC1SimulatorApp:
         self.mem_tree.heading("Decimal (Signed)", text="Decimal (Signed)")
         self.mem_tree.heading("Hex", text="Hex")
         
-        self.mem_tree.column("Addr", width=60, anchor="center")
-        self.mem_tree.column("Binário (16b)", width=140, anchor="center")
-        self.mem_tree.column("Decimal (Signed)", width=100, anchor="center")
-        self.mem_tree.column("Hex", width=80, anchor="center")
-        
         # Scrollbar é essencial aqui pq são 4096 linhas
         vsb = ttk.Scrollbar(mem_frame, orient="vertical", command=self.mem_tree.yview)
         self.mem_tree.configure(yscroll=vsb.set)
