@@ -77,20 +77,38 @@ class MIC1SimulatorApp:
         right_panel = ttk.Frame(main_container)
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5)
 
+        # --- SEÇÃO PROCESSADOR (REGISTRADORES) MELHORADA ---
         reg_frame = ttk.LabelFrame(right_panel, text="Processador (Registradores)")
         reg_frame.pack(fill=tk.X, pady=5)
         
-        self.reg_labels = {}
+        # Configurar grid para centralizar e expandir as colunas
+        for i in range(5):
+            reg_frame.grid_columnconfigure(i, weight=1)
+
+        self.reg_widgets = {} # Dicionário para guardar as referências dos labels (Hex e Dec)
         regs = ['PC', 'AC', 'SP', 'IR', 'MAR', 'MBR', 'TIR', 'A', 'B', 'C']
         
         r, c = 0, 0
         for reg in regs:
-            f = ttk.Frame(reg_frame, borderwidth=1, relief="solid")
-            f.grid(row=r, column=c, padx=5, pady=5, sticky="ew")
-            ttk.Label(f, text=reg, font=("Arial", 8, "bold")).pack()
-            l = ttk.Label(f, text="0000", font=("Consolas", 12), foreground="#4CAF50")
-            l.pack()
-            self.reg_labels[reg] = l
+            # Container do "Card" do Registrador (Usa tk.Frame para ter controle total da cor de fundo)
+            card = tk.Frame(reg_frame, bg="#3e3e42", bd=1, relief="flat")
+            card.grid(row=r, column=c, padx=5, pady=5, sticky="ew")
+            
+            # Título do Registrador (Ex: PC) - Fonte menor e cinza claro
+            lbl_title = tk.Label(card, text=reg, font=("Segoe UI", 9, "bold"), bg="#3e3e42", fg="#aaaaaa")
+            lbl_title.pack(pady=(5, 0))
+            
+            # Valor HEX (Grande e Colorido - Ciano/Verde Água)
+            lbl_hex = tk.Label(card, text="0000", font=("Consolas", 14, "bold"), bg="#3e3e42", fg="#4ec9b0")
+            lbl_hex.pack()
+            
+            # Valor Decimal (Menor e Discreto)
+            lbl_dec = tk.Label(card, text="0", font=("Segoe UI", 8), bg="#3e3e42", fg="#dcdcdc")
+            lbl_dec.pack(pady=(0, 5))
+            
+            # Guardamos as referências para atualizar depois
+            self.reg_widgets[reg] = {'hex': lbl_hex, 'dec': lbl_dec}
+            
             c += 1
             if c > 4: r, c = 1, 0
 
@@ -181,11 +199,16 @@ class MIC1SimulatorApp:
             self.mem_tree.item(str(addr), values=(addr, bin_s, signed_val, hex_s))
 
     def update_ui(self):
-        # Atualiza Registradores
-        for reg, lbl in self.reg_labels.items():
+        # Atualiza Registradores (Visual Novo com Hex e Dec separados)
+        for reg, widgets in self.reg_widgets.items():
             val = self.cpu.registers.get(reg, 0)
             signed_val = self.to_signed(val)
-            lbl.config(text=f"{val:04X} ({signed_val})")
+            
+            # Atualiza texto Hexadecimal
+            widgets['hex'].config(text=f"{val:04X}")
+            
+            # Atualiza texto Decimal
+            widgets['dec'].config(text=f"{signed_val}")
 
         self.update_full_memory_view()
 
