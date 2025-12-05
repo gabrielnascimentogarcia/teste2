@@ -1,7 +1,6 @@
 class MIC1Assembler:
     def __init__(self):
-        # Mapeamento dos mnemônicos para seus opcodes base
-        # Agora utilizando notação binária para facilitar a correlação com a documentação (MAC I)
+        #Mapeamento dos mnemônicos para seus opcodes base
         self.opcodes = {
             'LODD': 0b0000000000000000, 'STOD': 0b0001000000000000, 
             'ADDD': 0b0010000000000000, 'SUBD': 0b0011000000000000,
@@ -21,20 +20,18 @@ class MIC1Assembler:
     def compile(self, text):
         raw_lines = text.split('\n')
         
-        # --- PASSADA 1: Mapeamento de Labels ---
-        # Tivemos que fazer duas passadas porque se o label estiver mais pra frente
-        # no código (forward reference), a gente não sabe o endereço dele na primeira leitura.
+        #Na primeira passada, a gente irá fazer o mapeamento das labels. Serão necessárias 2 passadas no total, para termos o endereço!
         labels = {}
         instructions = []
         address_counter = 0
         
         for line in raw_lines:
-            # Limpeza básica (tira comentários e espaços)
+            #Limpeza de comentários e espaços inseridos pelo usuário
             clean = line.split(';')[0].split('#')[0].strip()
             if not clean:
                 continue
             
-            # Tratamento de Labels (ex: "loop:")
+            #Tratamento de labels (ex: loop)
             if ':' in clean:
                 label_part, rest = clean.split(':', 1)
                 label_name = label_part.strip()
@@ -48,7 +45,7 @@ class MIC1Assembler:
                 instructions.append(clean)
                 address_counter += 1
 
-        # --- PASSADA 2: Geração do Binário ---
+        #Agora, na segunda passada, convertemos as instruções para código binário
         binary_code = []
         errors = []
         
@@ -56,12 +53,11 @@ class MIC1Assembler:
             parts = line.split()
             mnemonic = parts[0].upper()
             
-            # Checa se é uma instrução válida
+            #Faz a checagem se é uma instrução válida
             if mnemonic in self.opcodes:
                 base_opcode = self.opcodes[mnemonic]
                 
-                # Regra: OpCodes de 0000 a 1110 precisam de argumento (operandos).
-                # INSP e DESP também precisam.
+                #OpCodes de 0000 a 1110 precisam de argumento (operandos). INSP e DESP tb precisam
                 needs_operand = (base_opcode >> 12) <= 0b1110 or mnemonic in ['INSP', 'DESP']
                 
                 if needs_operand:
@@ -72,7 +68,7 @@ class MIC1Assembler:
                     op_str = parts[1]
                     val = 0
                     
-                    # Resolve o operando: pode ser um Label salvo na Passada 1 ou um número direto
+                    #Conseguimos resolver o operando, que pode ser um label salvo na passada 1 ou um número direto
                     if op_str in labels:
                         val = labels[op_str]
                     else:
@@ -82,18 +78,17 @@ class MIC1Assembler:
                             errors.append(f"Erro: Não entendi o operando '{op_str}'. Label não existe?")
                             continue
                     
-                    # Bitwise OR para juntar o opcode com o operando
                     if mnemonic in ['INSP', 'DESP']:
-                        final_instr = base_opcode | (val & 0b11111111) # Apenas 8 bits
+                        final_instr = base_opcode | (val & 0b11111111) #apenas 8 bits
                     else:
-                        final_instr = base_opcode | (val & 0b111111111111) # 12 bits padrão
+                        final_instr = base_opcode | (val & 0b111111111111) #12 bits padrão
                     
                     binary_code.append(final_instr)
                 else:
                     # Instruções "sozinhas" (HALT, RETN, etc)
                     binary_code.append(base_opcode)
 
-            # Se não for instrução, pode ser dado cru (ex: variáveis no final do código)
+            #Se não for instrução, pode ser um dado cru, como uma indicação para outra parte do programa (ex: JNEG end)
             else:
                 try:
                     val = int(mnemonic)
