@@ -273,6 +273,25 @@ class MIC1Hardware:
                 y = instruction & 0xFF
                 self.registers['SP'] = (self.registers['SP'] - y) & 0xFFFF
                 self.micro_log.append(f"[DESP] SP <- SP - {y}")
+            
+            # --- IMPLEMENTAÇÃO DE PSHI e POPI ---
+            elif instruction == 0xF000: # PSHI (Push Indirect)
+                addr = self.registers['AC']
+                val = self._read_mem(addr)
+                sp = (self.registers['SP'] - 1) & 0xFFFF
+                self.registers['SP'] = sp
+                self._write_mem(sp, val)
+                self.micro_log.append(f"[PSHI] Push Indirect: Stack <- Mem[AC:{addr}] ({val})")
+
+            elif instruction == 0xF200: # POPI (Pop Indirect)
+                sp = self.registers['SP']
+                val = self._read_mem(sp)
+                addr = self.registers['AC']
+                self._write_mem(addr, val)
+                self.registers['SP'] = (sp + 1) & 0xFFFF
+                self.micro_log.append(f"[POPI] Pop Indirect: Mem[AC:{addr}] <- Stack ({val})")
+            # ------------------------------------
+
             elif instruction == 0xF800: # RETN
                 sp = self.registers['SP']
                 ret_addr = self._read_mem(sp)
@@ -296,7 +315,7 @@ class MIC1Hardware:
                 self.registers['SP'] = (sp + 1) & 0xFFFF
                 self.micro_log.append("[POP] AC <- Mem[SP]; SP<-SP+1")
             
-            # --- SOLUÇÃO PROBLEMA 1: FLUSH NO HALT ---
+            # FLUSH NO HALT
             elif instruction == 0xFFFF: # HALT
                 self.halted = True
                 self.cache.flush_all() # Força a escrita da cache na RAM
